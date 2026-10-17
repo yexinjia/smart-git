@@ -425,11 +425,14 @@ Forbidden: --pull-request-auth-token (keeps the token out of command-line histor
 
 ### Parse results
 
+Per-repo failure warnings: with status ok the CLI downgrades a single repo's listing error to a warnings entry (mostly workspace scope), e.g. HTTP 401/403, Bad credentials, token rejected, request failed. Check warnings before treating status ok as success.
+
 | Result | Behavior |
 |--------|----------|
-| status ok | success; render the summary table |
-| items empty and warnings are clean | success but no matches; record summary / warnings as-is |
-| items empty and warnings report per-repo failures (workspace scope: HTTP 401/403, Bad credentials, token rejected, request failed) | not "no matches": the CLI downgrades per-repo errors to warnings with status ok. Report the listing as failed for those repos; for 401/403 guide the user to fix SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN (shared prerequisite 3.1). If only some repos failed, show the items and name the failed repos |
+| status ok, items non-empty, no per-repo failure warnings | success; render the summary table |
+| status ok, items empty, no per-repo failure warnings | success but no matches; record summary / warnings as-is |
+| status ok, items empty, per-repo failure warnings | listing failed, not "no matches": name the failed repos; for 401/403 guide the user to fix SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN (shared prerequisite 3.1) |
+| status ok, items non-empty, per-repo failure warnings | partial results: render the items, then name the failed repos and say their MRs/PRs are missing; for 401/403 guide the token fix as above |
 | CONFIG_ERROR / Token | guide per shared prerequisites; stop |
 | other error | skip/failure summary (do not pretend success in multi-repo) |
 
@@ -498,9 +501,10 @@ Forbidden: --pull-request-auth-token, --provider / --pull-request-provider overr
 | Result | Behavior |
 |--------|----------|
 | needs_host_agent | continue the turn loop (not a failure); keep sessionPath |
-| status ok plus totalListed 0 and warnings are clean | success but no matches; record summary / warnings as-is |
-| status ok plus warnings report per-repo listing failures (HTTP 401/403, Bad credentials, token rejected, request failed) | same as List my PRs/MRs: do not report "no matches" for those repos; say listing failed there and guide the token fix for 401/403 |
-| status ok plus outcomes | terminal success path; combine with exit: 0 all passed; 2 some not_passed; 4 some error / cancelledRemaining |
+| status ok, totalListed 0, no per-repo failure warnings (defined under List my PRs/MRs parse results) | success but no matches; record summary / warnings as-is |
+| status ok, totalListed 0, per-repo failure warnings | same as the List my PRs/MRs row "items empty, per-repo failure warnings": listing failed, not "no matches" |
+| status ok plus outcomes, no per-repo failure warnings | terminal success path; combine with exit: 0 all passed; 2 some not_passed; 4 some error / cancelledRemaining |
+| status ok plus outcomes, per-repo failure warnings | report the outcomes per exit code as in the row above, then apply the List my PRs/MRs row "items non-empty, per-repo failure warnings": name the failed repos and say their MRs/PRs were neither listed nor reviewed |
 | CONFIG_ERROR / Token | guide per shared prerequisites; stop |
 | other error | failure summary (do not edit business source) |
 
@@ -657,7 +661,7 @@ Resolution priority:
 - On needs_host_agent, wrote the response and resumed with --session to a terminal state (list mode and List my commits have no turn, skip this item; batch-review has turns and must resume). commit-message follows the request structure/protocol/scope/skill (refine if User draft is present; required must be type(scope):, forbidden must not include parenthesized scope; neither has a second turn). code-review follows Review skill guidance; PR/MR review with line-number annotations must copy the visible lineNumber. The pr-content turn before bridge creates the MR must fill title and description JSON; do not paste the commit message as the description. Only when titlePrompt is empty and there is exactly 1 commit relative to target does the CLI overwrite title with that commit subject; when titlePrompt is non-empty, this turn's title is used
 - Create PR/MR: unique target resolved (or missing target already asked and CLI skipped); used with-target-branch.sh config target Git-root; did not git switch; did not edit business source
 - Did not run bridge / pull-request create with an empty target (empty target fails create and will not guess main)
-- List: used my-pull-request list; self-hosted GitLab confirmed remoteHost (or already asked); host override used --pull-request-remote-host, not the deprecated --my-pull-request-remote-host; did not automatically switch to review/batch-review; did not pass --pull-request-auth-token; empty results whose warnings carry per-repo HTTP/token failures were reported as failures, not "no matches" (same for batch-review)
+- List: used my-pull-request list; self-hosted GitLab confirmed remoteHost (or already asked); host override used --pull-request-remote-host, not the deprecated --my-pull-request-remote-host; did not automatically switch to review/batch-review; did not pass --pull-request-auth-token; checked warnings before calling status ok a success: per-repo HTTP/token failures with empty results were reported as a failed listing, not "no matches", and with non-empty results as partial results naming the failed repos (same for batch-review)
 - List my commits: used my-commit list (not git log / gh / hand-written APIs); range mapped to a preset or custom with both dates (custom only, at most 31 days; longer ranges were sent back to the user to narrow); self-hosted GitLab confirmed remoteHost (or already asked); complete false reported as partial; did not chain into a report / review / MR
 - Batch-review: used my-pull-request batch-review (not multiple hand-written pull-request review); kinds from batchReviewKinds / --my-pull-request-batch-review-kinds; resume used the same --session; autoApprove/autoMerge risk was called out or dry-run was honored; did not edit business source because of not_passed
 - Did not manually commit/push/API; did not misuse gh in place of review/list/batch-review/my-commit list
