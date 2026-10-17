@@ -58,7 +58,7 @@ Path: turns/{turnId}.response.json
 
 Review language follows Review language in the request messages (config is often zh-cn).
 
-Commands with no turn: my-pull-request list (and locally rendered report generate) never return needs_host_agent and do not use this loop.
+Commands with no turn: my-pull-request list, my-commit list (and locally rendered report generate) never return needs_host_agent and do not use this loop.
 Commands with turns (must use this section): bridge, pull-request create, pull-request review, my-pull-request batch-review, etc.
 
 ### code-review example

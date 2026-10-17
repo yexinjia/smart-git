@@ -13,7 +13,7 @@ Keep the token as env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN. Do not put a plainte
 
 ## This skill's defaults (out of the box)
 
-The fields below are the ones the five modes actually use, with out-of-the-box values.
+The fields below are the ones the six modes actually use, with out-of-the-box values.
 (If the JSON also has passHistory / reporting / output, this skill flow ignores them; they are not covered below.)
 
 ### Shared by local review / Create PR/MR
@@ -65,13 +65,14 @@ Two thresholds are easy to mix up: review.threshold only covers local review / C
 | pullRequestCreation.removeSourceBranch | true | Whether to delete the source branch after merge |
 | pullRequestCreation.skipBranches | ["main","master","develop"] | If the current branch matches, auto-create PR/MR is forbidden |
 
-### Platform (shared by Create / Review / List / Batch-review; local review does not need it)
+### Platform (shared by Create / Review / List / Batch-review / List my commits; local review does not need it)
 
 | Field | Default | One-line meaning |
 |-------|---------|------------------|
 | pullRequest.provider | "auto" | Platform: gitlab / github / auto |
 | pullRequest.apiBaseUrl | "" | API root for self-hosted GitLab/GitHub; public hosts may leave empty |
-| pullRequest.authToken | "env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN" | Token reference; keep env:..., no plaintext. Only create/review/list/batch-review need it; local bridge --review-only and config resolve resolve a missing env to empty and do not error |
+| pullRequest.authToken | "env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN" | Token reference; keep env:..., no plaintext. Only create/review/list/batch-review/my-commit list need it; local bridge --review-only and config resolve resolve a missing env to empty and do not error |
+| pullRequest.remoteHost | "" | Git host for account-scope List / Batch-review / List my commits; empty out of the box — fill in for self-hosted GitLab (and set provider explicitly) |
 
 ### Review existing PR/MR / batch-review
 
@@ -94,7 +95,20 @@ Two thresholds are easy to mix up: review.threshold only covers local review / C
 | myPullRequest.listScope | "account" | List/batch scope: account (by account) or workspace (by workspace repos) |
 | myPullRequest.listKinds | ["created","assigned","reviewer"] | List my PRs/MRs only: filter by role |
 | myPullRequest.batchReviewKinds | ["reviewer","assigned"] | Batch-review only: role filter before serial review (default pending) |
-| myPullRequest.remoteHost | "" | Git host used for account scope; empty out of the box — fill in for self-hosted GitLab |
+
+The account-scope host now lives in pullRequest.remoteHost. myPullRequest.remoteHost is a deprecated fallback (read only when pullRequest.remoteHost is empty) and is no longer in the colocated JSON; an old config that still sets it keeps working.
+
+### List my commits
+
+| Field | Default | One-line meaning |
+|-------|---------|------------------|
+| myCommit.scope | "account" | account (repos the token account is a member of) or workspace (only --repo / current repo remotes). Independent of myPullRequest.listScope |
+| myCommit.range | "today" | Default range when the utterance gives no time: today / yesterday / thisWeek / lastWeek / thisMonth / lastMonth / custom |
+| myCommit.authorAliases | [] | Extra author names or emails to match besides the token login and profile email |
+| myCommit.concurrency | 2 | Worker count (1-10) |
+| myCommit.requestDelayMs | 100 | Minimum delay between API requests in ms (0-5000; 0 disables pacing) |
+| myCommit.includeMergeCommits | false | Whether merge commits appear in the list |
+| myCommit.outputFormat | "compact" | Summary style: compact (summary line plus commit messages only) or full (table with repo, SHA, time, branches, link). This skill's default is compact; the CLI built-in default is full |
 
 ---
 
@@ -108,13 +122,19 @@ Two thresholds are easy to mix up: review.threshold only covers local review / C
 | Switch review skill (frontend/Go/Java etc.) | review.skill.id; custom file via review.skill.path |
 | Use GitHub / auto-detect | pullRequest.provider: github or auto |
 | Self-hosted GitLab API URL | pullRequest.apiBaseUrl |
-| List my PRs/MRs against a Git host | myPullRequest.remoteHost |
+| List my PRs/MRs / my commits against a Git host | pullRequest.remoteHost (for a self-hosted host also set pullRequest.provider to gitlab / github) |
 | List only ones I created | myPullRequest.listKinds: ["created"] |
 | List only pending | myPullRequest.listKinds: ["reviewer","assigned"] (utterances with pending also one-shot override) |
 | List only where I am reviewer | myPullRequest.listKinds: ["reviewer"] (utterance must say I am reviewer, not merely pending) |
 | List / batch-review by workspace repos | myPullRequest.listScope: "workspace" |
 | Batch-review only pending | myPullRequest.batchReviewKinds: ["reviewer","assigned"] (already the default) |
 | Batch-review only ones I created | myPullRequest.batchReviewKinds: ["created"] |
+| List my commits for this week by default | myCommit.range: "thisWeek" (utterances like yesterday / last month also one-shot override) |
+| List my commits only from workspace repos | myCommit.scope: "workspace" |
+| Match commits made under another name or email | myCommit.authorAliases: ["Alice Smith","alice@corp.com"] |
+| Include merge commits in my commit list | myCommit.includeMergeCommits: true |
+| My commit list as a full table (SHA, time, link) by default | myCommit.outputFormat: "full" (default compact shows messages only; saying details in the request also switches for one turn) |
+| My commit list stops early (complete: false) | raise myCommit.requestDelayMs or lower myCommit.concurrency |
 | Default assignees, reviewers, labels on create | pullRequestCreation.assignees, reviewers, labels |
 | Create as a draft MR | pullRequestCreation.draft: true |
 | Attach a milestone on create | pullRequestCreation.milestone (title or numeric id) |
@@ -220,9 +240,10 @@ When filling the commit-message turn: follow language / structure / protocol / s
 
 | Field | Type / values | Notes |
 |-------|---------------|-------|
-| provider | gitlab / github / auto | Platform used for create, review, list, batch-review. This skill defaults to auto (detect GitLab / GitHub from remotes). |
+| provider | gitlab / github / auto | Platform used for create, review, list, batch-review, my-commit list. This skill defaults to auto (detect GitLab / GitHub from remotes). |
 | apiBaseUrl | URL string | API root for a self-hosted instance (e.g. https://git.example.com/api/v4). Official public instances may leave empty. |
 | authToken | "env:VARNAME" | Read the token from an env var. Keep env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN; no plaintext. Local Code Review does not use this field; a missing env resolves to empty, and only commands that actually call the platform API will say the token is required. |
+| remoteHost | hostname or URL with scheme, or "" | Git host for account scope of List my PRs/MRs, Batch-review, and List my commits. CLI normalizes to a hostname. Non-empty lets those modes skip reading local remotes. Resolution: pullRequest.remoteHost, then the deprecated myPullRequest.remoteHost, then local remotes. With provider=auto only github.com / gitlab.com are accepted; any other host is CONFIG_ERROR until provider is set to gitlab / github. workspace scope ignores it. Empty out of the box; for self-hosted GitLab, set it or ask first — do not silently list against the public internet. |
 
 ### pullRequestCreation — creating a PR/MR
 
@@ -275,12 +296,31 @@ Requests for an existing PR/MR include line-number annotations and per-line find
 | listScope | account / workspace | account: list open MRs for the current token account on the given host; workspace: list from --repo / current workspace remotes. List and batch-review share this field. |
 | listKinds | array of created / assigned / reviewer | List only: created = I created; assigned = assigned to me; reviewer = I am reviewer. Multi-select. Independent of batchReviewKinds. |
 | batchReviewKinds | same | Batch-review only: role filter before serial review. Out-of-box reviewer+assigned (pending); does not default to reviewing ones I created. |
-| remoteHost | hostname or URL with scheme | Git host for account scope. CLI normalizes to a hostname. Non-empty can skip reading local remotes. Empty with provider=auto (this skill's default) may fall through to public gitlab.com / github.com. Out of the box this field is empty; for self-hosted GitLab, set it or ask first — do not silently list against the public internet. |
+| remoteHost | hostname or URL with scheme | Deprecated. Fallback used only when pullRequest.remoteHost is empty. Move the value to pullRequest.remoteHost; setting both to different hosts means pullRequest.remoteHost wins. |
 
 One-shot CLI overrides (the skill appends them from utterances; you need not edit JSON):
 
-- List: --my-pull-request-list-scope, --my-pull-request-list-kinds, --my-pull-request-remote-host
-- Batch-review: --my-pull-request-list-scope, --my-pull-request-batch-review-kinds, --my-pull-request-remote-host (batch uses batch-review-kinds, not list-kinds)
+- List: --my-pull-request-list-scope, --my-pull-request-list-kinds, --pull-request-remote-host
+- Batch-review: --my-pull-request-list-scope, --my-pull-request-batch-review-kinds, --pull-request-remote-host (batch uses batch-review-kinds, not list-kinds)
+- The legacy --my-pull-request-remote-host still works in the CLI but this skill does not use it
+
+### myCommit — List my commits
+
+Applies to: List my commits (my-commit list) only. Reuses pullRequest.provider / apiBaseUrl / authToken / remoteHost. No Host-Agent turn.
+
+| Field | Type / values | Notes |
+|-------|---------------|-------|
+| scope | account / workspace | account: enumerate repositories the token account is a member of, skip ones with no activity since the range start, and query each. workspace: only repositories resolved from --repo paths (or cwd); ignores remoteHost. Independent of myPullRequest.listScope. |
+| range | today / yesterday / thisWeek / lastWeek / thisMonth / lastMonth / custom | Default range when the utterance gives none. Local calendar days of the machine running the CLI; weeks start on Monday. custom needs --start-date and --end-date (YYYY-MM-DD, inclusive, at most 31 days); the skill passes them only together with --my-commit-range custom, so leaving custom in the JSON without an utterance date is a CONFIG_ERROR. |
+| authorAliases | string array | Extra author names / emails. Commits are matched by the token login, profile email, and these aliases; the profile display name is not used. Trimmed and de-duplicated case-insensitively. GitLab's substring author filter is re-checked locally for exact matches. |
+| concurrency | integer 1-10 | Parallel repository workers. Higher is faster but burns rate limit. |
+| requestDelayMs | integer 0-5000 | Minimum delay between API requests. Raise it when the provider throttles you. |
+| includeMergeCommits | true / false | false hides merge commits. |
+| outputFormat | full / compact | Summary style. compact (this skill's default): one summary line (range, total, repositories scanned, complete) plus a list of commit message first lines. full: adds CLI version / provider / account and a table with repo, short SHA, message, local time, branches, link. The skill always calls the CLI with --output json and renders this style itself; saying details / full or brief / only messages in the request overrides it for that turn. In the CLI's own --output text it picks the same two layouts. |
+
+When the provider reports 5 or fewer remaining rate-limit requests, or returns a rate-limit error, the CLI stops early, keeps the records already collected, and reports complete: false (exit code still 0). GitHub records list the branches the commit was found on; GitLab records have no branch attribution.
+
+One-shot CLI overrides (the skill appends them from utterances): --my-commit-scope, --my-commit-range, --start-date / --end-date (custom only), --my-commit-author-aliases, --my-commit-include-merge-commits, --pull-request-remote-host. There are no SMART_COMMIT_MY_COMMIT_* environment variables.
 
 Print the full schema with: smart-commit-host-agent schema print --target config-file
 
@@ -299,9 +339,11 @@ Print the full schema with: smart-commit-host-agent schema print --target config
 
 ## Notes
 
-- The Agent does not edit this business config during Create PR/MR / Review / List / Batch-review (except the target temporary overlay). Personalize it locally.
+- The Agent does not edit this business config during Create PR/MR / Review / List / Batch-review / List my commits (except the target temporary overlay). Personalize it locally.
 - Default autoMerge: true: a live Review PR/MR or Batch-review my PRs/MRs may merge immediately; if unsure, say dry-run / trial first, or set autoMerge to false.
-- List my PRs/MRs / Batch-review ship with empty remoteHost and provider=auto; the CLI may fall back to public gitlab.com / github.com. For self-hosted GitLab, set remoteHost or ask first; do not silently list against the public internet.
+- List my PRs/MRs / Batch-review / List my commits ship with empty pullRequest.remoteHost and provider=auto; the CLI may fall back to public gitlab.com / github.com. For self-hosted GitLab, set pullRequest.remoteHost plus pullRequest.provider: "gitlab" (provider=auto rejects non-public hosts), or ask first; do not silently list against the public internet.
+- These fields need smart-commit-host-agent >= 0.1.5. Older CLIs silently ignore pullRequest.remoteHost and myCommit, and lack my-commit list.
+- List my commits custom ranges are at most 31 days; for longer periods the skill asks you to narrow the range (or use thisMonth / lastMonth).
 - Batch-review filters with batchReviewKinds (default pending), independent of listKinds (default all three).
 - If a diff is truncated or context is too long: raise review.maxDiffChars, or split into smaller MRs.
 - review.threshold and pullRequestReview.threshold belong to different modes (local/Create PR/MR vs existing PR/MR) and do not override each other; both use score > threshold.
@@ -312,6 +354,6 @@ Print the full schema with: smart-commit-host-agent schema print --target config
 - review.skill.path / commitMessage.skill.path / *.configFilePath all support absolute paths; relative paths are not relative to the JSON directory (skill files relative to repo root, overlays relative to --repo or cwd). See How to write paths above.
 - A configured path whose files do not exist errors. On Create PR/MR the creation overlay is merged into the temp config by with-target-branch.sh (conversation targetBranch written last); review overlay is still loaded automatically by the CLI. The Agent must not merge overlay files by hand.
 - If config resolve fails, fix the reported field and re-trigger the skill.
-- The platform token still comes from the env var and is not replaced by JSON personalization. Local Code Review does not require that token; Create PR/MR / Review / List / Batch-review do enforce it.
+- The platform token still comes from the env var and is not replaced by JSON personalization. Local Code Review does not require that token; Create PR/MR / Review / List / Batch-review / List my commits do enforce it.
 
 review.skill / commitMessage.skill are host-agent built-in templates, not other agent skills.

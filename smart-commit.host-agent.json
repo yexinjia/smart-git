@@ -39,7 +39,8 @@
     "pullRequest": {
       "provider": "auto",
       "apiBaseUrl": "",
-      "authToken": "env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN"
+      "authToken": "env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN",
+      "remoteHost": ""
     },
     "pullRequestCreation": {
       "autoCreateAfterPush": true,
@@ -70,8 +71,16 @@
     "myPullRequest": {
       "listScope": "account",
       "listKinds": ["created", "assigned", "reviewer"],
-      "batchReviewKinds": ["reviewer", "assigned"],
-      "remoteHost": ""
+      "batchReviewKinds": ["reviewer", "assigned"]
+    },
+    "myCommit": {
+      "scope": "account",
+      "range": "today",
+      "authorAliases": [],
+      "concurrency": 2,
+      "requestDelayMs": 100,
+      "includeMergeCommits": false,
+      "outputFormat": "compact"
     },
     "passHistory": {
       "enabled": false,
