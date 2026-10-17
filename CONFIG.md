@@ -11,6 +11,34 @@ Keep the token as env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN. Do not put a plainte
 
 ---
 
+## One-time overrides by saying it
+
+You do not have to edit the JSON for a single run. State the value in the request and the skill passes it to the CLI as --set=path=value for that run only; the file is not changed and the next request uses the file again.
+
+| You say (examples) | Applied as |
+|--------------------|------------|
+| review this MR but don't auto-merge this time | pullRequestReview.autoMerge=false |
+| don't auto-approve | pullRequestReview.autoApprove=false |
+| local review with threshold 8 | review.threshold=8 |
+| review this MR with threshold 8 | pullRequestReview.threshold=8 |
+| review in English | review.language=en |
+| commit message in English, with body | commitMessage.language=en, commitMessage.structure=subjectBody |
+| create MR as draft, reviewers alice and bob, label bug | pullRequestCreation.draft=true, reviewers=alice,bob, labels=bug |
+| don't push this time | git.autoPush=false |
+| use GitHub for this one | pullRequest.provider=github |
+| require a commit scope | commitMessage.scope=required |
+
+Rules:
+
+- Any field documented below can be overridden except pullRequest.authToken and the two configFilePath fields
+- Overrides beat the colocated JSON and repo overlays; the mode's dedicated flags (dry-run, commit message, list kinds, commit range, remote host, target branch) still work as before
+- Give a concrete value; for a vague wish ("stricter review") the skill asks for the number
+- Every summary lists the overrides it applied
+- Requires a smart-commit-host-agent whose help lists --set (added after 0.1.5); with an older CLI the skill stops instead of silently ignoring what you said
+- To make a value permanent, edit the JSON field
+
+---
+
 ## This skill's defaults (out of the box)
 
 The fields below are the ones the six modes actually use, with out-of-the-box values.
@@ -207,7 +235,7 @@ The CLI classifies the diff domain and writes it into the request (Detected diff
 | input | string | If non-empty: hybridGenerate=false validates and uses it; true uses it as User draft in the turn. Usually leave empty. |
 | maxDiffChars | positive integer | Diff cap when generating a commit message. Must be >= 1000. |
 | structure | subjectOnly / subjectBody / subjectBodyFooter | Max structure for generate and validate. Out-of-box subjectOnly: one-line subject only. |
-| scope | auto / required / forbidden | Parenthesized scope policy for typed subjects (type: / type!:). Out-of-box forbidden: no parenthesized scope; CLI strips it; no second turn. auto: optional. required: must be type(scope):; missing fails immediately (no correction turn). forbidden: strips (scope) (feat(auth): becomes feat:, feat(api)!: becomes feat!:), no second turn. Gitmoji / non-typed (WIP, ordinary parentheses in a summary) unchanged. Overrides conflicting scope preference in the skill. Under required / forbidden, Conventional and Semantic subject shapes match; only auto still follows skill examples. No CLI flag / env override. Do not confuse with myPullRequest.listScope. |
+| scope | auto / required / forbidden | Parenthesized scope policy for typed subjects (type: / type!:). Out-of-box forbidden: no parenthesized scope; CLI strips it; no second turn. auto: optional. required: must be type(scope):; missing fails immediately (no correction turn). forbidden: strips (scope) (feat(auth): becomes feat:, feat(api)!: becomes feat!:), no second turn. Gitmoji / non-typed (WIP, ordinary parentheses in a summary) unchanged. Overrides conflicting scope preference in the skill. Under required / forbidden, Conventional and Semantic subject shapes match; only auto still follows skill examples. No dedicated CLI flag or env override; one-time via --set=commitMessage.scope=... when stated in the request. Do not confuse with myPullRequest.listScope. |
 | autoGenerate | true / false | When input is empty: true generates via a turn; false errors (no message source). |
 | hybridGenerate | true / false | Only meaningful when input (or --commit-message) is non-empty. false: skip the commit-message turn; true: still issue the turn, request includes User draft, refine the draft rather than discard it. |
 | skill.id | conventional / semantic / gitmoji | Built-in generate guidance when path is empty. Guides generation; what actually blocks is validation.protocol. They may differ. |
@@ -339,7 +367,7 @@ Print the full schema with: smart-commit-host-agent schema print --target config
 
 ## Notes
 
-- The Agent does not edit this business config during Create PR/MR / Review / List / Batch-review / List my commits (except the target temporary overlay). Personalize it locally.
+- The Agent does not edit this business config during Create PR/MR / Review / List / Batch-review / List my commits (except the target temporary overlay). Personalize it locally, or state a value in the request for a one-time --set override.
 - Default autoMerge: true: a live Review PR/MR or Batch-review my PRs/MRs may merge immediately; if unsure, say dry-run / trial first, or set autoMerge to false.
 - List my PRs/MRs / Batch-review / List my commits ship with empty pullRequest.remoteHost and provider=auto; the CLI may fall back to public gitlab.com / github.com. For self-hosted GitLab, set pullRequest.remoteHost plus pullRequest.provider: "gitlab" (provider=auto rejects non-public hosts), or ask first; do not silently list against the public internet.
 - These fields need smart-commit-host-agent >= 0.1.5. Older CLIs silently ignore pullRequest.remoteHost and myCommit, and lack my-commit list.
@@ -349,7 +377,7 @@ Print the full schema with: smart-commit-host-agent schema print --target config
 - review.threshold and pullRequestReview.threshold belong to different modes (local/Create PR/MR vs existing PR/MR) and do not override each other; both use score > threshold.
 - commitMessage.validation.pattern is an extra subject regex stacked on protocol; they are independent.
 - commitMessage.skill.id only guides generation; what blocks is validation.protocol. This skill's defaults: skill.id conventional, validation.protocol none.
-- commitMessage.scope only governs typed-subject (scope), unrelated to myPullRequest.listScope; no CLI flag. required failure does not open another commit-message turn; forbidden is stripped by the CLI with no second turn. Gitmoji does not grow a typed scope from this.
+- commitMessage.scope only governs typed-subject (scope), unrelated to myPullRequest.listScope; no dedicated CLI flag (one-time via --set). required failure does not open another commit-message turn; forbidden is stripped by the CLI with no second turn. Gitmoji does not grow a typed scope from this.
 - hybridGenerate only issues a refinement turn when input / --commit-message is already present; empty input still follows autoGenerate.
 - review.skill.path / commitMessage.skill.path / *.configFilePath all support absolute paths; relative paths are not relative to the JSON directory (skill files relative to repo root, overlays relative to --repo or cwd). See How to write paths above.
 - A configured path whose files do not exist errors. On Create PR/MR the creation overlay is merged into the temp config by with-target-branch.sh (conversation targetBranch written last); review overlay is still loaded automatically by the CLI. The Agent must not merge overlay files by hand.

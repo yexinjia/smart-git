@@ -24,12 +24,12 @@ Do not: edit business source based on review comments; switch Git branches; manu
 
 This skill runs independently: it does not call or hand off to other skills.
 
-Behavior is configurable: review threshold, review skill, commit message, Git auto-commit/push, PR/MR platform, assignees/reviewers/labels/milestone/draft, review comments and approve/merge, etc. are all controlled by the colocated smart-commit.host-agent.json. Out-of-box defaults: pullRequest.provider=auto; commitMessage.scope is forbidden; commitMessage.validation.protocol is none; pullRequestReview.autoApprove / autoMerge are true; summarySeverities is ["P0","P1"]; myPullRequest.listScope=account; myCommit.scope=account; myCommit.range=today; pullRequest.remoteHost="" (empty; shared by List / Batch-review / List my commits; if empty, ask before listing against public gitlab.com/github.com for self-hosted GitLab; myPullRequest.remoteHost is a deprecated fallback). Users adapt by editing that file; no skill changes required. review.skill / commitMessage.skill are host-agent built-in templates, not other agent skills. See [CONFIG.md](CONFIG.md) and [SETUP.md](SETUP.md).
+Behavior is configurable: review threshold, review skill, commit message, Git auto-commit/push, PR/MR platform, assignees/reviewers/labels/milestone/draft, review comments and approve/merge, etc. are all controlled by the colocated smart-commit.host-agent.json. Out-of-box defaults: pullRequest.provider=auto; commitMessage.scope is forbidden; commitMessage.validation.protocol is none; pullRequestReview.autoApprove / autoMerge are true; summarySeverities is ["P0","P1"]; myPullRequest.listScope=account; myCommit.scope=account; myCommit.range=today; pullRequest.remoteHost="" (empty; shared by List / Batch-review / List my commits; if empty, ask before listing against public gitlab.com/github.com for self-hosted GitLab; myPullRequest.remoteHost is a deprecated fallback). Users adapt by editing that file; no skill changes required. A value stated in the request itself ("no auto-merge this time", "threshold 8") overrides the file for that run only (shared prerequisite 4.1). review.skill / commitMessage.skill are host-agent built-in templates, not other agent skills. See [CONFIG.md](CONFIG.md) and [SETUP.md](SETUP.md).
 
 At these times, the Agent should remind the user in one or two sentences that they can edit this config (do not paste the full JSON, do not restate the token):
 
 - This turn skipped / CONFIG_ERROR for a config-related reason (when it is not a missing token, you may point at the specific field docs)
-- The user asks whether they can change the threshold / disable auto-merge / set assignees / switch to GitHub / require commit scope, etc.
+- The user asks whether they can change the threshold / disable auto-merge / set assignees / switch to GitHub / require commit scope, etc. (also mention they can just say it in the request for a one-time override)
 - After a successful Create PR/MR / Review / List my PRs/MRs / Batch-review my PRs/MRs / List my commits summary (optional one-liner)
 
 When showing that reminder, write it as a clickable Markdown link using the absolute path of the effective skill directory (SKILL_DIR comes from config resolve / the skill copy read this turn), for example:
@@ -141,6 +141,7 @@ Any candidate succeeds: freeze that CLI prefix, record the source, do not run 2.
 All fail: go to 2.3.
 
 Mode help requirements: Local needs bridge and --review-only. Create PR/MR needs bridge; breakpoint resume also needs pull-request create. Review PR/MR needs pull-request review. List needs my-pull-request list. Batch-review needs my-pull-request batch-review. List my commits needs my-commit list.
+When this turn has natural-language config overrides (4.1), the help must also list --set.
 List / Batch-review / List my commits also need --pull-request-remote-host in help (CLI >= 0.1.5). Older CLIs silently ignore pullRequest.remoteHost and myCommit in the JSON (a self-hosted host would quietly fall back to the public host), so a candidate missing it counts as a miss; the global install in 2.3 then upgrades to the latest package.
 
 #### 2.3 When nothing is found: default automatic global install
@@ -185,7 +186,7 @@ Summary must say Skipped (waiting for SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN); do 
 If config resolve still reports CONFIG_ERROR because of other env refs, guide by field and stop. Treat every authToken in output as sensitive; do not paste it to the user (including redacted).
 If JSON points authToken at a variable name that does not exist in the current shell, and this turn is a token-required mode: offer two options — change authToken back to env:SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN, or write that variable into the shell config so the current AI tool's shell can read it, then re-trigger.
 
-Run: {CLI prefix} config resolve --config "$SMART_GIT_CONFIG" optionally --repo Git-root.
+Run: {CLI prefix} config resolve --config "$SMART_GIT_CONFIG" optionally --repo Git-root, plus the same --set flags this turn will use (shared prerequisite 4.1), so invalid overrides fail early and the resolved values reflect them.
 
 When this mode later runs bridge / pull-request at a Git root, config resolve must pass the same --repo (relative configFilePath overlays resolve relative to the repo root; absolute paths are probed as-is). Account-scoped List my PRs/MRs / List my commits that does not read a local repo may omit --repo.
 
@@ -198,7 +199,26 @@ host-agent has no target-branch flag. For Create PR/MR, generate a temporary con
 
 The script merges that repo's pullRequestCreation.configFilePath overlay using CLI rules, then writes the conversation-specified targetBranch, and clears configFilePath in the temp config (so the CLI does not load the overlay a second time and overwrite the target). One RUNTIME_CONFIG per Git root.
 
-Except --repo, --config, --session / --session-base, --review-only, breakpoint resume --no-commit / --no-push, --output, user-explicit dry-run, a --commit-message the user clearly gave this turn, the --my-pull-request-* overrides allowed for List / Batch-review, the --my-commit-* and --start-date / --end-date overrides allowed for List my commits, and --pull-request-remote-host for a host the user named this turn (List / Batch-review / List my commits only), do not pass flags that would override config such as --provider / --pull-request-provider / --pull-request-api-base-url / --pull-request-auth-token (the token only goes through the env var plus config env: ref). commitMessage.scope has no CLI flag; change the JSON only.
+Except --repo, --config, --session / --session-base, --review-only, breakpoint resume --no-commit / --no-push, --output, user-explicit dry-run, a --commit-message the user clearly gave this turn, the --my-pull-request-* overrides allowed for List / Batch-review, the --my-commit-* and --start-date / --end-date overrides allowed for List my commits, --pull-request-remote-host for a host the user named this turn (List / Batch-review / List my commits only), and --set overrides derived from the user's words (4.1), do not pass flags that would override config such as --provider / --pull-request-provider / --pull-request-api-base-url / --pull-request-auth-token (the token only goes through the env var plus config env: ref; a platform switch the user asks for goes through --set=pullRequest.provider=...).
+
+### 4.1 One-shot config overrides from the user's words
+
+When the user's message this turn states a config value in natural language, apply it to this run only with the CLI's generic --set flag. Never edit smart-commit.host-agent.json for this; the next request goes back to the file unless the user restates the value. If the user wants it permanent, point them at the JSON field instead.
+
+Form: one token per field, --set=path=value, where path is the dotted field under smartCommitHostAgent (same names as CONFIG.md). Quote the whole token when the value has spaces or JSON, e.g. '--set=pullRequestCreation.titlePrompt=Use a Chinese title'. Values: numbers; true / false; plain text; arrays as a comma list (--set=pullRequestCreation.reviewers=alice,bob) or JSON; an empty value clears an array.
+
+Rules:
+- Only translate explicit values or unambiguous switches ("no auto-merge this time", "threshold 8", "review in English", "create as draft", "reviewers alice and bob", "use GitHub"). A vague wish without a value ("review more strictly") -> ask once for the value; do not invent one
+- Map by mode when a word is shared: threshold -> review.threshold in Local Code Review / Create PR/MR, pullRequestReview.threshold in Review PR/MR / Batch-review; language of the review -> review.language; language of the commit message -> commitMessage.language
+- Prefer the dedicated flag where this skill already uses one: --dry-run, --commit-message, --my-pull-request-*, --my-commit-*, --start-date / --end-date, --pull-request-remote-host. Create PR/MR target branch still goes through with-target-branch.sh. List my commits summary style (outputFormat) is chosen from the user's words directly. Everything else uses --set
+- Forbidden: pullRequest.authToken and any *.configFilePath (the CLI rejects them); never put a token on the command line
+- Skip fields the mode cannot use (e.g. git.autoPush in Local Code Review, which never commits) and say so in the summary instead of passing them
+- Pass the same --set flags to config resolve, the first run, and every --session resume of that command
+- Where this skill itself reads a config value to decide what to do (pullRequestCreation.skipBranches, autoCreateAfterPush, targetBranch, myPullRequest kinds, myCommit fields), use the overridden value
+- Dedicated CLI flags beat --set for the same field, and --set beats repo overlays and the JSON file
+- Every summary lists the overrides applied this run (field = value), or says none
+
+CLI support: --set needs a CLI whose help lists --set (added after 0.1.5). When this turn has overrides, add that to the help requirement in 2.2. If the resolved CLI still lacks it after 2.3, stop and tell the user the overrides need a newer smart-commit-host-agent; run without them only if the user agrees. Never drop overrides silently.
 
 pullRequestReview.configFilePath is loaded automatically by the CLI in config resolve / pull-request review / batch-review (comma-separated, first existing file; absolute paths as-is, relative paths relative to the repo root when --repo is present). The Agent must not manually read/merge overlay files. Review overlays must not contain configFilePath. Creation-overlay merge only goes through with-target-branch.sh; do not hand-edit the temp JSON afterwards.
 
@@ -281,7 +301,7 @@ cd to the Git root. Record porcelain and current branch. Generate RUNTIME_CONFIG
 | empty | yes | pull-request create plus loop |
 | empty | no | skip |
 
-bridge (main path): cd Git root, set SESSION_BASE to ${TMPDIR:-/tmp}/scha-sessions, run {CLI prefix} bridge --repo . --config RUNTIME_CONFIG --session-base SESSION_BASE optional --commit-message if the user clearly gave one this turn, --output json. On needs_host_agent, write the response and resume with the same args except replace --session-base with --session sessionPath (never pass both).
+bridge (main path): cd Git root, set SESSION_BASE to ${TMPDIR:-/tmp}/scha-sessions, run {CLI prefix} bridge --repo . --config RUNTIME_CONFIG --session-base SESSION_BASE optional --commit-message if the user clearly gave one this turn, optional --set=... overrides (4.1), --output json. On needs_host_agent, write the response and resume with the same args except replace --session-base with --session sessionPath (never pass both).
 
 Typical purpose order: commit-message (when autoGenerate is true and input is empty, or hybridGenerate is true with a draft), then code-review, then (after push) pr-content, then create MR.
 Add --commit-message only when the user clearly gave a commit message this turn (equivalent to commitMessage.input).
@@ -296,7 +316,7 @@ pr-content must be a JSON string of title and description; do not paste the comm
 title: titlePrompt non-empty uses this turn's title; titlePrompt empty and exactly 1 commit relative to target: CLI overwrites with that commit subject
 reviewers / milestone / draft are sent to the platform API from config; do not fill them in the turn JSON
 
-pull-request create (breakpoint): {CLI prefix} pull-request create --repo . --config RUNTIME_CONFIG --session-base SESSION_BASE --no-commit optional --no-push --output json.
+pull-request create (breakpoint): {CLI prefix} pull-request create --repo . --config RUNTIME_CONFIG --session-base SESSION_BASE --no-commit optional --no-push, optional --set=... overrides (4.1), --output json.
 
 | relative to @{u} | flags |
 |------------------|-------|
@@ -319,7 +339,7 @@ Every bridge must write into the summary: score, threshold, reviewDecision, revi
 ### Output summary (Create PR/MR)
 
 Heading: Git / MR summary — branch name.
-Include: MR target branch and source (user-specified / conversation / config); CLI smart-commit-host-agent version and all-succeeded / partial / all-failed / skipped; a table of repo, source branch, target, path (bridge / pull-request create), result, score, commit, push, MR, link; Code Review per repo with score / threshold / decision / summary / details table.
+Include: MR target branch and source (user-specified / conversation / config); temporary overrides applied (4.1) or none; CLI smart-commit-host-agent version and all-succeeded / partial / all-failed / skipped; a table of repo, source branch, target, path (bridge / pull-request create), result, score, commit, push, MR, link; Code Review per repo with score / threshold / decision / summary / details table.
 End with the clickable config reminder: [smart-commit.host-agent.json]({SKILL_DIR}/smart-commit.host-agent.json) and [CONFIG.md]({SKILL_DIR}/CONFIG.md).
 
 ---
@@ -331,18 +351,18 @@ Must have at least one PR/MR URL (GitHub .../pull/N or GitLab .../merge_requests
 Default-config impact (know this before a live review): in the colocated smart-commit.host-agent.json, pullRequest.provider defaults to auto; pullRequestReview.autoApprove / autoMerge default to true; summarySeverities defaults to ["P0","P1"]. So a live pull-request review may auto-approve and merge after a passing review. When the user has not changed the config:
 
 - Add --dry-run only if the user explicitly asks for dry-run / a trial / no publish / no merge
-- If the user clearly does not want auto-merge/approve: tell them to set those config fields to false and re-run (the Agent does not edit the config file)
+- If the user clearly does not want auto-merge / auto-approve this time: pass --set=pullRequestReview.autoMerge=false and/or --set=pullRequestReview.autoApprove=false (4.1); for a permanent change point them at the JSON
 - The summary must truthfully report approve / merge attempted / performed (or skip under dry-run)
 
-Run: {CLI prefix} pull-request review URL --config $SMART_GIT_CONFIG --repo . --session-base ${TMPDIR:-/tmp}/scha-sessions optional --dry-run --output json.
+Run: {CLI prefix} pull-request review URL --config $SMART_GIT_CONFIG --repo . --session-base ${TMPDIR:-/tmp}/scha-sessions optional --dry-run, optional --set=... overrides (4.1), --output json. Keep the URL right after "pull-request review" and use the single-token --set= form.
 
 A relative pullRequestReview.configFilePath depends on --repo; when reviewing an existing PR/MR, pass it by default (run at the corresponding Git root). Omit only when there is no local repo and the overlay is empty or an absolute path.
 
-Do not pass --provider to override config (default auto; change platform in the JSON). Multiple URLs are reviewed one by one; a single URL failure does not stop the rest (except a global CONFIG failure).
+Do not pass --provider / --pull-request-provider (default auto; a platform switch the user asks for this turn uses --set=pullRequest.provider=..., a permanent one goes in the JSON). Multiple URLs are reviewed one by one; a single URL failure does not stop the rest (except a global CONFIG failure).
 
 pullRequestReview.configFilePath is loaded automatically by the CLI (rules: shared prerequisite 4). A non-empty skillPromptTuning overrides review.skill.promptTuning and only affects this mode / batch-review, not local bridge. When filling the code-review turn, follow Review skill guidance; when the request has line-number annotations, copy the visible lineNumber.
 
-The summary must include: score, threshold, details, summary, platform action fields (including approve/merge). On blocked, do not edit code and should not merge.
+The summary must include: score, threshold, details, summary, platform action fields (including approve/merge), temporary overrides applied (or none). On blocked, do not edit code and should not merge.
 
 Do not use gh pr view prefetch in place of the CLI.
 
@@ -381,7 +401,7 @@ remoteHost (commonly used for account; strongly recommended for self-hosted GitL
 3. Config myPullRequest.remoteHost (deprecated fallback, read by the CLI only when pullRequest.remoteHost is empty)
 4. Still empty and scope=account: the CLI may fall back to local remotes, then public gitlab.com / github.com (driven by pullRequest.provider). Out of the box remoteHost is empty; when the team uses self-hosted GitLab, ask first for the hostname or prompt them to edit the config; do not silently list against the public internet without confirmation
 
-With pullRequest.provider=auto, a remoteHost other than github.com / gitlab.com is CONFIG_ERROR ("Could not infer GitHub/GitLab from ..."). Guide the user to set pullRequest.provider to gitlab or github (and pullRequest.apiBaseUrl if needed) in the JSON; do not pass --pull-request-provider and do not edit the config yourself.
+With pullRequest.provider=auto, a remoteHost other than github.com / gitlab.com is CONFIG_ERROR ("Could not infer GitHub/GitLab from ..."). Guide the user to set pullRequest.provider to gitlab or github (and pullRequest.apiBaseUrl if needed) in the JSON, or, if they state the platform in the request, pass --set=pullRequest.provider=gitlab for this run (4.1); do not pass --pull-request-provider and do not edit the config yourself.
 
 listKinds (multi-select: created / assigned / reviewer):
 1. User-semantics mapping:
@@ -401,7 +421,7 @@ listKinds (multi-select: created / assigned / reviewer):
 
 {CLI prefix} my-pull-request list --config $SMART_GIT_CONFIG optional --repo paths, --my-pull-request-list-scope account|workspace, --my-pull-request-list-kinds created,assigned,reviewer, --pull-request-remote-host host, --output json.
 
-Allowed one-shot overrides: only the --my-pull-request-* flags above, --pull-request-remote-host, plus --repo / --config / --output. Do not use the deprecated --my-pull-request-remote-host.
+Allowed one-shot overrides: only the --my-pull-request-* flags above, --pull-request-remote-host, --set=... for other fields the user stated (4.1, e.g. pullRequest.provider), plus --repo / --config / --output. Do not use the deprecated --my-pull-request-remote-host.
 Forbidden: --pull-request-auth-token (keeps the token out of command-line history), --provider / --pull-request-provider overriding config, hand-written gh / platform REST lists.
 
 ### Parse results
@@ -417,7 +437,7 @@ Take from JSON: scope, kinds, items[] (at least title, url, repoName/projectPath
 
 ### Output summary (List my PRs/MRs)
 
-Heading: List my PRs/MRs. Include CLI version; query scope/kinds/remoteHost/repos; results summary; a table of repo, title, roles, source->target, draft, updated, link; warnings.
+Heading: List my PRs/MRs. Include CLI version; query scope/kinds/remoteHost/repos; temporary overrides applied (if any); results summary; a table of repo, title, roles, source->target, draft, updated, link; warnings.
 End with the clickable reminder pointing at smart-commit.host-agent.json for myPullRequest.listScope / listKinds and pullRequest.remoteHost, and CONFIG.md.
 Do not paste the token / authToken. After listing, if the user wants to review one item they must separately say review MR plus URL; if they want a batch review they must separately say batch-review my MRs. Do not automatically switch to pull-request review / batch-review.
 
@@ -447,7 +467,7 @@ Do not trigger: only list my MRs / my pending MRs (List mode, does not review); 
 Default-config impact (know this before a live batch review): in the colocated config, pullRequestReview.autoApprove / autoMerge default to true. Batch items that pass may also be auto-approved and merged. When the user has not changed the config:
 
 - Add --dry-run only if the user explicitly asks for dry-run / a trial / no publish / no merge
-- If the user clearly does not want auto-merge/approve: tell them to set those config fields to false and re-run (the Agent does not edit the config file)
+- If the user clearly does not want auto-merge / auto-approve this time: pass --set=pullRequestReview.autoMerge=false and/or --set=pullRequestReview.autoApprove=false (4.1) on the first run and every resume
 - The summary must truthfully report each outcome and the overall summary; when any item is not_passed the CLI exit is often 2 (blocked). Still write completed outcomes into the summary; do not edit business source because of blocked
 
 ### scope / host / kinds resolution (high to low)
@@ -467,10 +487,10 @@ batchReviewKinds (multi-select: created / assigned / reviewer) — not listKinds
 
 ### CLI
 
-{CLI prefix} my-pull-request batch-review --config $SMART_GIT_CONFIG optional --repo paths, --my-pull-request-list-scope, --my-pull-request-batch-review-kinds, --pull-request-remote-host, --session-base ${TMPDIR:-/tmp}/scha-sessions, optional --dry-run, --output json.
+{CLI prefix} my-pull-request batch-review --config $SMART_GIT_CONFIG optional --repo paths, --my-pull-request-list-scope, --my-pull-request-batch-review-kinds, --pull-request-remote-host, --session-base ${TMPDIR:-/tmp}/scha-sessions, optional --dry-run, optional --set=... overrides (4.1), --output json.
 On needs_host_agent, write the response and resume with the same args except replace --session-base with --session sessionPath (never pass both). On resume do not list again; the CLI skips completed URLs from session progress.
 
-Allowed one-shot overrides: the --my-pull-request-* flags above, --pull-request-remote-host, --repo / --config / --session / --session-base / --dry-run / --output. Do not use the deprecated --my-pull-request-remote-host.
+Allowed one-shot overrides: the --my-pull-request-* flags above, --pull-request-remote-host, --set=... (4.1), --repo / --config / --session / --session-base / --dry-run / --output. Do not use the deprecated --my-pull-request-remote-host.
 Forbidden: --pull-request-auth-token, --provider / --pull-request-provider override, gh / hand-written platform APIs, using multiple pull-request review calls instead of this command (unless the user only wants a few specific URLs), chaining batch-review after list mode on your own.
 
 ### Parse results
@@ -487,7 +507,7 @@ Take from JSON: scope, kinds, totalListed, outcomes[] (status passed / not_passe
 
 ### Output summary (Batch-review my PRs/MRs)
 
-Heading: Batch-review my PRs/MRs. Include CLI version and succeeded / some not passed / failed / skipped / dry-run; query scope, batchReviewKinds, remoteHost, dryRun, repos; overview summary, totalListed, cancelledRemaining; a table of status, title, score, threshold, link/error; warnings.
+Heading: Batch-review my PRs/MRs. Include CLI version and succeeded / some not passed / failed / skipped / dry-run; query scope, batchReviewKinds, remoteHost, dryRun, repos; temporary overrides applied (or none); overview summary, totalListed, cancelledRemaining; a table of status, title, score, threshold, link/error; warnings.
 End with the clickable reminder for myPullRequest.batchReviewKinds / listScope, pullRequest.remoteHost, and pullRequestReview.autoApprove/autoMerge.
 Do not paste the token / authToken. Any item not passed or error: do not Write/StrReplace business source based on it.
 
@@ -554,7 +574,7 @@ authorAliases / merge commits:
 
 {CLI prefix} my-commit list --config $SMART_GIT_CONFIG optional --repo paths, --my-commit-scope account|workspace, --my-commit-range preset, --start-date / --end-date (custom only), --my-commit-author-aliases list, --my-commit-include-merge-commits[=false], --pull-request-remote-host host, --output json.
 
-Allowed one-shot overrides: only the flags above plus --repo / --config / --output. Leave --my-commit-concurrency / --my-commit-request-delay-ms to config unless the user explicitly asks this turn. Always use --output json; do not pass --my-commit-output-format (it only changes CLI text output). The summary style is chosen by the skill, see Output summary below.
+Allowed one-shot overrides: only the flags above, --set=... for other fields the user stated (4.1, e.g. pullRequest.provider), plus --repo / --config / --output. Leave --my-commit-concurrency / --my-commit-request-delay-ms to config unless the user explicitly asks this turn. Always use --output json; do not pass --my-commit-output-format (it only changes CLI text output). The summary style is chosen by the skill, see Output summary below.
 Forbidden: --pull-request-auth-token, --provider / --pull-request-provider / --pull-request-api-base-url overriding config, the deprecated --my-pull-request-remote-host, git log on local clones or hand-written gh / platform REST calls in place of this command.
 
 ### Parse results
@@ -579,7 +599,7 @@ compact (default): heading List my commits, then one line with range label (loca
 
 full: heading List my commits. Include CLI version; provider and host; account login; scope; range label with local since / until; total commits, repositories scanned, complete yes/no; then a table of repo (projectPath), short SHA (first 8 chars), message (first line), authored at (local time), branches (empty for GitLab), link; warnings.
 
-Both styles: complete false must be stated as partial results; empty results say no commits matched.
+Both styles: complete false must be stated as partial results; empty results say no commits matched; temporary overrides applied this run (4.1) get one line when there are any.
 End with the clickable reminder pointing at smart-commit.host-agent.json for myCommit.outputFormat / range / scope / authorAliases / includeMergeCommits and pullRequest.remoteHost, and CONFIG.md.
 Do not paste the token / authToken, and do not paste authorEmail values beyond what the user asked for.
 
@@ -587,7 +607,7 @@ Do not paste the token / authToken, and do not paste authorEmail values beyond w
 
 ## Local Code Review mode
 
-cd to the Git root. Run {CLI prefix} bridge --repo . --config $SMART_GIT_CONFIG --review-only --session-base ${TMPDIR:-/tmp}/scha-sessions --output json.
+cd to the Git root. Run {CLI prefix} bridge --repo . --config $SMART_GIT_CONFIG --review-only --session-base ${TMPDIR:-/tmp}/scha-sessions optional --set=... overrides (4.1; review.* fields such as threshold / language / skill are the useful ones here) --output json. The summary lists the overrides applied (or none).
 
 - Do not use --no-commit/--no-push in place of --review-only
 - Do not pass target / provider / create-MR parameters
@@ -627,6 +647,7 @@ Resolution priority:
 ## Quick checklist
 
 - Mode routed and commands not mixed
+- Config values stated in the request went through --set=path=value (or the mode's dedicated flag) on config resolve, the first run, and every resume; nothing was written to the JSON; no authToken / configFilePath override; vague wishes without a value were asked about; the summary lists the overrides; a CLI without --set stopped the run instead of dropping overrides
 - discover then resolve done; platform modes have a token (or already guided and skipped); Local Code Review was not stopped for a missing token; config resolve passed
 - Node >= 20; CLI from PATH / project node_modules / SMART_COMMIT_CLI / a global install this turn (source recorded in the summary); List / Batch-review / List my commits used a CLI whose help has --pull-request-remote-host (>= 0.1.5)
 - Did not extra-run a global install when a local or PATH install already existed; automatic global install only when nothing found

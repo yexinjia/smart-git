@@ -99,6 +99,8 @@ On needs_host_agent, read the request, write turns/{turnId}.response.json, then 
 
 Repeat until a terminal status. Same idea for pull-request create / pull-request review / my-pull-request batch-review: keep equivalent args except session, and replace --session-base with --session.
 
+The CLI re-resolves config from the arguments on every resume (the session does not store it), so one-shot --set=path=value overrides must be passed again on each resume exactly as on the first run.
+
 ## Exit codes
 
 | Code | Meaning |

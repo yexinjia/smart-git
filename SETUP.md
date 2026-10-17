@@ -49,6 +49,7 @@ GitLab: api scope (create/comment/merge MRs). GitHub: repo or the PR permissions
 
 Recommended: edit smart-commit.host-agent.json next to this skill.
 Stricter review, switch to GitHub, default assignees/reviewers, a different review skill, disable auto-approve/merge, disable auto-push, etc. all live in that file; you do not need to change SKILL.md.
+For a single run, just say the value in the request (e.g. "review this MR, don't auto-merge this time"); the skill passes it as a one-time --set override and leaves the file unchanged. This needs a smart-commit-host-agent whose help lists --set (added after 0.1.5). See "One-time overrides by saying it" in CONFIG.md.
 
 Out-of-box defaults (see CONFIG.md):
 
@@ -77,7 +78,7 @@ Quick lookup:
 | Review / commit language | review.language, commitMessage.language |
 | Review skill (built-in id / custom file) | review.skill.id, review.skill.path (absolute or relative to repo root), review.skill.promptTuning |
 | Commit protocol / extra subject regex | commitMessage.validation.protocol (none/conventional/semantic/gitmoji), pattern (independent of protocol) |
-| Require/forbid (scope) on the commit subject | commitMessage.scope (auto/required/forbidden; do not confuse with myPullRequest.listScope; no CLI flag) |
+| Require/forbid (scope) on the commit subject | commitMessage.scope (auto/required/forbidden; do not confuse with myPullRequest.listScope; no dedicated CLI flag) |
 | Commit skill / draft refinement | commitMessage.skill (path supports absolute or relative to repo root), hybridGenerate (also needs input) |
 | Platform (default auto) / self-hosted | pullRequest.provider, apiBaseUrl |
 | Account-scope Git host (List / Batch-review / List my commits) | pullRequest.remoteHost (self-hosted also needs pullRequest.provider gitlab / github); myPullRequest.remoteHost is a deprecated fallback |
