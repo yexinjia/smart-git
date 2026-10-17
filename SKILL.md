@@ -6,7 +6,7 @@ description: >-
 
 # smart-git
 
-Via the CLI **`smart-commit-host-agent`** (>= 0.1.5), six mutually exclusive modes are supported. After entering, route the mode first; do not mix commands.
+Via the CLI **`smart-commit-host-agent`** (>= 0.1.7), six mutually exclusive modes are supported. After entering, route the mode first; do not mix commands.
 
 | Mode | CLI | Purpose |
 |------|-----|---------|
@@ -61,7 +61,7 @@ Do not treat a message that only contains review MR plus a URL as list; list mod
 If the same message hits both list and batch-review, or contains both list and batch-review wording (e.g. list and batch-review my MRs), stop and ask.
 
 List my commits keywords (any one): `list\s*my\s*(own\s+)?(recent\s+)?commits?`, `my-commit\s*list`, `my\s+(own\s+)?commits?\s+(for\s+|from\s+|in\s+|since\s+)?(today|yesterday|this\s+week|last\s+week|this\s+month|last\s+month|the\s+last\s+\d+\s+days)`, `what\s+(did|have)\s+I\s+commit(ted)?`, `show\s+(me\s+)?my\s+commits?` (case-insensitive).
-Must refer to commits I authored (my commits); the bare word commit / commit message does not trigger this mode (Create PR/MR commits as a step). Do not treat list my MRs / list my PRs as this mode. If the same message also hits list my MRs / batch-review / create MR (e.g. list my commits and MRs), stop and ask.
+Must refer to commits I authored (my commits); the bare word commit / commit message does not trigger this mode (Create PR/MR commits as a step). Do not treat list my MRs / list my PRs as this mode. If the same message also hits list my MRs / batch-review / create MR, or asks to list commits together with MRs/PRs (e.g. list my commits and MRs, which the list-my-MRs regex alone misses), stop and ask.
 
 Review MR keywords (any one): `review\s+(my\s+|an?\s+|the\s+|this\s+)?(open\s+)?(MR|PR)`, `MR\s*review`, `PR\s*review`, `review\s+(an?\s+|the\s+|this\s+)?(merge\s*request|pull\s*request)` (case-insensitive) plus a parseable URL.
 Do not treat a message that already matches batch-review keywords as this mode, even if it contains the word review and pull request / merge request (that is Batch-review my PRs/MRs).
@@ -141,8 +141,7 @@ Any candidate succeeds: freeze that CLI prefix, record the source, do not run 2.
 All fail: go to 2.3.
 
 Mode help requirements: Local needs bridge and --review-only. Create PR/MR needs bridge; breakpoint resume also needs pull-request create. Review PR/MR needs pull-request review. List needs my-pull-request list. Batch-review needs my-pull-request batch-review. List my commits needs my-commit list.
-When this turn has natural-language config overrides (4.1), the help must also list --set.
-List / Batch-review / List my commits also need --pull-request-remote-host in help (CLI >= 0.1.5). Older CLIs silently ignore pullRequest.remoteHost and myCommit in the JSON (a self-hosted host would quietly fall back to the public host), so a candidate missing it counts as a miss; the global install in 2.3 then upgrades to the latest package.
+Every mode also requires CLI >= 0.1.7: --version must print 0.1.7 or later. Older CLIs silently ignore pullRequest.remoteHost and myCommit in the JSON (a self-hosted host would quietly fall back to the public host), may lack --set, and require --repo for pull-request review, so an older candidate counts as a miss; the global install in 2.3 then upgrades to the latest package.
 
 #### 2.3 When nothing is found: default automatic global install
 
@@ -218,7 +217,7 @@ Rules:
 - Dedicated CLI flags beat --set for the same field, and --set beats repo overlays and the JSON file
 - Every summary lists the overrides applied this run (field = value), or says none
 
-CLI support: --set needs a CLI whose help lists --set (added after 0.1.5). When this turn has overrides, add that to the help requirement in 2.2. If the resolved CLI still lacks it after 2.3, stop and tell the user the overrides need a newer smart-commit-host-agent; run without them only if the user agrees. Never drop overrides silently.
+CLI support: --set is part of the >= 0.1.7 requirement in 2.2. Never drop overrides silently.
 
 pullRequestReview.configFilePath is loaded automatically by the CLI in config resolve / pull-request review / batch-review (comma-separated, first existing file; absolute paths as-is, relative paths relative to the repo root when --repo is present). The Agent must not manually read/merge overlay files. Review overlays must not contain configFilePath. Creation-overlay merge only goes through with-target-branch.sh; do not hand-edit the temp JSON afterwards.
 
@@ -354,9 +353,9 @@ Default-config impact (know this before a live review): in the colocated smart-c
 - If the user clearly does not want auto-merge / auto-approve this time: pass --set=pullRequestReview.autoMerge=false and/or --set=pullRequestReview.autoApprove=false (4.1); for a permanent change point them at the JSON
 - The summary must truthfully report approve / merge attempted / performed (or skip under dry-run)
 
-Run: {CLI prefix} pull-request review URL --config $SMART_GIT_CONFIG --repo . --session-base ${TMPDIR:-/tmp}/scha-sessions optional --dry-run, optional --set=... overrides (4.1), --output json. Keep the URL right after "pull-request review" and use the single-token --set= form.
+Run: {CLI prefix} pull-request review URL --config $SMART_GIT_CONFIG --session-base ${TMPDIR:-/tmp}/scha-sessions optional --repo path, optional --dry-run, optional --set=... overrides (4.1), --output json. Keep the URL right after "pull-request review" and use the single-token --set= form.
 
-A relative pullRequestReview.configFilePath depends on --repo; when reviewing an existing PR/MR, pass it by default (run at the corresponding Git root). Omit only when there is no local repo and the overlay is empty or an absolute path.
+--repo is optional. Platform, project, number, and diff all come from the URL, so no local checkout is needed; without --repo the CLI uses the current directory (Git or not) and never writes into it. Pass --repo only when pullRequestReview.configFilePath or review.skill is a relative path that lives in a specific repo (point it at that repo's Git root), or when the user is already working in that PR/MR's local clone.
 
 Do not pass --provider / --pull-request-provider (default auto; a platform switch the user asks for this turn uses --set=pullRequest.provider=..., a permanent one goes in the JSON). Multiple URLs are reviewed one by one; a single URL failure does not stop the rest (except a global CONFIG failure).
 
@@ -429,7 +428,8 @@ Forbidden: --pull-request-auth-token (keeps the token out of command-line histor
 | Result | Behavior |
 |--------|----------|
 | status ok | success; render the summary table |
-| items empty | success but no matches; record summary / warnings as-is |
+| items empty and warnings are clean | success but no matches; record summary / warnings as-is |
+| items empty and warnings report per-repo failures (workspace scope: HTTP 401/403, Bad credentials, token rejected, request failed) | not "no matches": the CLI downgrades per-repo errors to warnings with status ok. Report the listing as failed for those repos; for 401/403 guide the user to fix SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN (shared prerequisite 3.1). If only some repos failed, show the items and name the failed repos |
 | CONFIG_ERROR / Token | guide per shared prerequisites; stop |
 | other error | skip/failure summary (do not pretend success in multi-repo) |
 
@@ -498,7 +498,8 @@ Forbidden: --pull-request-auth-token, --provider / --pull-request-provider overr
 | Result | Behavior |
 |--------|----------|
 | needs_host_agent | continue the turn loop (not a failure); keep sessionPath |
-| status ok plus totalListed 0 | success but no matches; record summary / warnings as-is |
+| status ok plus totalListed 0 and warnings are clean | success but no matches; record summary / warnings as-is |
+| status ok plus warnings report per-repo listing failures (HTTP 401/403, Bad credentials, token rejected, request failed) | same as List my PRs/MRs: do not report "no matches" for those repos; say listing failed there and guide the token fix for 401/403 |
 | status ok plus outcomes | terminal success path; combine with exit: 0 all passed; 2 some not_passed; 4 some error / cancelledRemaining |
 | CONFIG_ERROR / Token | guide per shared prerequisites; stop |
 | other error | failure summary (do not edit business source) |
@@ -613,6 +614,7 @@ cd to the Git root. Run {CLI prefix} bridge --repo . --config $SMART_GIT_CONFIG 
 - Do not pass target / provider / create-MR parameters
 - Does not need pullRequest.authToken / SMART_COMMIT_PULL_REQUEST_AUTH_TOKEN; even if unset, must not stop per 3.1
 - Confirm the result: commitMessageSource=review-only, didCommit=false, didPush=false
+- With git.autoStageWhenNothingStaged true (default) and nothing staged, the CLI stages the working-tree changes to review them and leaves them staged. Mention this in the summary; do not unstage or reset on your own
 - reviewDetails table format: shared prerequisite 6
 
 ---
@@ -647,15 +649,15 @@ Resolution priority:
 ## Quick checklist
 
 - Mode routed and commands not mixed
-- Config values stated in the request went through --set=path=value (or the mode's dedicated flag) on config resolve, the first run, and every resume; nothing was written to the JSON; no authToken / configFilePath override; vague wishes without a value were asked about; the summary lists the overrides; a CLI without --set stopped the run instead of dropping overrides
+- Config values stated in the request went through --set=path=value (or the mode's dedicated flag) on config resolve, the first run, and every resume; nothing was written to the JSON; no authToken / configFilePath override; vague wishes without a value were asked about; the summary lists the overrides
 - discover then resolve done; platform modes have a token (or already guided and skipped); Local Code Review was not stopped for a missing token; config resolve passed
-- Node >= 20; CLI from PATH / project node_modules / SMART_COMMIT_CLI / a global install this turn (source recorded in the summary); List / Batch-review / List my commits used a CLI whose help has --pull-request-remote-host (>= 0.1.5)
+- Node >= 20; CLI from PATH / project node_modules / SMART_COMMIT_CLI / a global install this turn (source recorded in the summary); the CLI is >= 0.1.7 (--version)
 - Did not extra-run a global install when a local or PATH install already existed; automatic global install only when nothing found
 - Did not forge an unverified path after a failed global install
 - On needs_host_agent, wrote the response and resumed with --session to a terminal state (list mode and List my commits have no turn, skip this item; batch-review has turns and must resume). commit-message follows the request structure/protocol/scope/skill (refine if User draft is present; required must be type(scope):, forbidden must not include parenthesized scope; neither has a second turn). code-review follows Review skill guidance; PR/MR review with line-number annotations must copy the visible lineNumber. The pr-content turn before bridge creates the MR must fill title and description JSON; do not paste the commit message as the description. Only when titlePrompt is empty and there is exactly 1 commit relative to target does the CLI overwrite title with that commit subject; when titlePrompt is non-empty, this turn's title is used
 - Create PR/MR: unique target resolved (or missing target already asked and CLI skipped); used with-target-branch.sh config target Git-root; did not git switch; did not edit business source
 - Did not run bridge / pull-request create with an empty target (empty target fails create and will not guess main)
-- List: used my-pull-request list; self-hosted GitLab confirmed remoteHost (or already asked); host override used --pull-request-remote-host, not the deprecated --my-pull-request-remote-host; did not automatically switch to review/batch-review; did not pass --pull-request-auth-token
+- List: used my-pull-request list; self-hosted GitLab confirmed remoteHost (or already asked); host override used --pull-request-remote-host, not the deprecated --my-pull-request-remote-host; did not automatically switch to review/batch-review; did not pass --pull-request-auth-token; empty results whose warnings carry per-repo HTTP/token failures were reported as failures, not "no matches" (same for batch-review)
 - List my commits: used my-commit list (not git log / gh / hand-written APIs); range mapped to a preset or custom with both dates (custom only, at most 31 days; longer ranges were sent back to the user to narrow); self-hosted GitLab confirmed remoteHost (or already asked); complete false reported as partial; did not chain into a report / review / MR
 - Batch-review: used my-pull-request batch-review (not multiple hand-written pull-request review); kinds from batchReviewKinds / --my-pull-request-batch-review-kinds; resume used the same --session; autoApprove/autoMerge risk was called out or dry-run was honored; did not edit business source because of not_passed
 - Did not manually commit/push/API; did not misuse gh in place of review/list/batch-review/my-commit list

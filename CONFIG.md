@@ -34,7 +34,6 @@ Rules:
 - Overrides beat the colocated JSON and repo overlays; the mode's dedicated flags (dry-run, commit message, list kinds, commit range, remote host, target branch) still work as before
 - Give a concrete value; for a vague wish ("stricter review") the skill asks for the number
 - Every summary lists the overrides it applied
-- Requires a smart-commit-host-agent whose help lists --set (added after 0.1.5); with an older CLI the skill stops instead of silently ignoring what you said
 - To make a value permanent, edit the JSON field
 
 ---
@@ -370,7 +369,7 @@ Print the full schema with: smart-commit-host-agent schema print --target config
 - The Agent does not edit this business config during Create PR/MR / Review / List / Batch-review / List my commits (except the target temporary overlay). Personalize it locally, or state a value in the request for a one-time --set override.
 - Default autoMerge: true: a live Review PR/MR or Batch-review my PRs/MRs may merge immediately; if unsure, say dry-run / trial first, or set autoMerge to false.
 - List my PRs/MRs / Batch-review / List my commits ship with empty pullRequest.remoteHost and provider=auto; the CLI may fall back to public gitlab.com / github.com. For self-hosted GitLab, set pullRequest.remoteHost plus pullRequest.provider: "gitlab" (provider=auto rejects non-public hosts), or ask first; do not silently list against the public internet.
-- These fields need smart-commit-host-agent >= 0.1.5. Older CLIs silently ignore pullRequest.remoteHost and myCommit, and lack my-commit list.
+- This skill requires smart-commit-host-agent >= 0.1.7. Older CLIs silently ignore pullRequest.remoteHost and myCommit, may lack my-commit list and --set, and require --repo for pull-request review.
 - List my commits custom ranges are at most 31 days; for longer periods the skill asks you to narrow the range (or use thisMonth / lastMonth).
 - Batch-review filters with batchReviewKinds (default pending), independent of listKinds (default all three).
 - If a diff is truncated or context is too long: raise review.maxDiffChars, or split into smaller MRs.

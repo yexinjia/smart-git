@@ -33,7 +33,7 @@ The directory must contain at least:
 
 ## Install the CLI
 
-Prefer an existing install (need not be global). Use a global binary on PATH, a project-local node_modules binary, an explicit path via SMART_COMMIT_CLI, or a source build. Only when none of those is usable does the skill automatically globally install the package. Requires Node.js >= 20 and smart-commit-host-agent >= 0.1.5 (my-commit list and pullRequest.remoteHost; an older install is treated as unusable for List / Batch-review / List my commits and gets upgraded by the global install). If that install fails, the skill skips the business flow and will not pretend the CLI is installed.
+Prefer an existing install (need not be global). Use a global binary on PATH, a project-local node_modules binary, an explicit path via SMART_COMMIT_CLI, or a source build. Only when none of those is usable does the skill automatically globally install the package. Requires Node.js >= 20 and smart-commit-host-agent >= 0.1.7. An older install is treated as unusable and gets upgraded by the global install. If that install fails, the skill skips the business flow and will not pretend the CLI is installed.
 
 ## Environment variables
 
@@ -49,7 +49,7 @@ GitLab: api scope (create/comment/merge MRs). GitHub: repo or the PR permissions
 
 Recommended: edit smart-commit.host-agent.json next to this skill.
 Stricter review, switch to GitHub, default assignees/reviewers, a different review skill, disable auto-approve/merge, disable auto-push, etc. all live in that file; you do not need to change SKILL.md.
-For a single run, just say the value in the request (e.g. "review this MR, don't auto-merge this time"); the skill passes it as a one-time --set override and leaves the file unchanged. This needs a smart-commit-host-agent whose help lists --set (added after 0.1.5). See "One-time overrides by saying it" in CONFIG.md.
+For a single run, just say the value in the request (e.g. "review this MR, don't auto-merge this time"); the skill passes it as a one-time --set override and leaves the file unchanged. See "One-time overrides by saying it" in CONFIG.md.
 
 Out-of-box defaults (see CONFIG.md):
 
